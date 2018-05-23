@@ -6,19 +6,33 @@ import java.awt.Font;
 import java.awt.HeadlessException;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.charset.Charset;
+import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Properties;
 
 import javax.swing.JEditorPane;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.HyperlinkEvent;
-import javax.swing.event.HyperlinkListener;
 
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
@@ -30,17 +44,48 @@ import com.eclipsesource.json.JsonValue;
 
 public class JUpdater
 {
-	private String name;
-	private String project;
+	private final String name;
+	private final String project;
 	private JsonObject result = null;
 
-	public JUpdater(String name, String project)
+	public static void main(final String[] args)
+	{
+		if (args.length == 0)
+		{
+			try
+			{
+				final Properties props = new Properties();
+				props.load(JUpdater.class.getClassLoader().getResourceAsStream("install.properties"));
+				final JUpdater updater = new JUpdater(props.getProperty("name"), props.getProperty("project"));
+				updater.install();
+			}
+			catch (final IOException e)
+			{
+				e.printStackTrace();
+			}
+		}
+		else if (args.length == 2)
+		{
+			try
+			{
+				final JUpdater updater = new JUpdater(args[0], args[1]);
+				updater.update();
+			}
+			catch (IOException e)
+			{
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public JUpdater(final String name, final String project)
 	{
 		this.name = name;
 		this.project = project;
 		try
 		{
-			URL url = new URL("https", "api.github.com", "/repos/"+this.name+"/"+this.project+"/releases/latest");
+			final URL url = new URL("https", "api.github.com", "/repos/" + this.name + "/" + this.project + "/releases/latest");
 			result = Json.parse(new BufferedReader(new InputStreamReader(url.openStream(), Charset.forName("UTF-8")))).asObject();
 		}
 		catch (HeadlessException | IOException e)
@@ -49,27 +94,110 @@ public class JUpdater
 		}
 	}
 
+	public void update() throws IOException
+	{
+		final URL url = getZipURL();
+		if (url != null)
+		{
+			try(InputStream in = url.openStream())
+			{
+				final Path tempDir = Files.createTempDirectory("Install");
+				final Path tempFile = Files.createTempFile(tempDir, null, ".zip");
+				Files.copy(JUpdater.class.getClassLoader().getResourceAsStream("install.zip"), tempFile, StandardCopyOption.REPLACE_EXISTING);
+				unzip(tempFile, Paths.get("").toAbsolutePath());
+				launch(Paths.get("").toAbsolutePath());
+			}
+		}
+	}
+
+	public void install() throws IOException
+	{
+		final Path tempDir = Files.createTempDirectory("Install");
+		final Path tempFile = Files.createTempFile(tempDir, null, ".zip");
+		Files.copy(JUpdater.class.getClassLoader().getResourceAsStream("install.zip"), tempFile, StandardCopyOption.REPLACE_EXISTING);
+		new JFileChooser()
+		{
+			private static final long serialVersionUID = 1L;
+			{
+				setDialogType(JFileChooser.SAVE_DIALOG);
+				setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+				setDialogTitle("Choose directory to install");
+				if (showSaveDialog(null) == JFileChooser.APPROVE_OPTION)
+				{
+					unzip(tempFile, getSelectedFile().toPath());
+					launch(getSelectedFile().toPath());
+				}
+			}
+		};
+	}
+
+	public void launch(Path path) throws IOException
+	{
+		new ProcessBuilder("java","-jar",project+".jar","-Xmx1g").directory(path.toFile()).start();
+	}
+	
+	public void unzip(final Path zipFile, final Path destDir) throws IOException
+	{
+		if (Files.notExists(destDir))
+		{
+			Files.createDirectories(destDir);
+		}
+
+		try (FileSystem zipFileSystem = FileSystems.newFileSystem(zipFile, null))
+		{
+			final Path root = zipFileSystem.getRootDirectories().iterator().next();
+
+			Files.walkFileTree(root, new SimpleFileVisitor<Path>()
+			{
+				@Override
+				public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException
+				{
+					final Path destFile = Paths.get(destDir.toString(), file.toString());
+					try
+					{
+						Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+					}
+					catch (final DirectoryNotEmptyException ignore)
+					{
+					}
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) throws IOException
+				{
+					final Path dirToCreate = Paths.get(destDir.toString(), dir.toString());
+					if (Files.notExists(dirToCreate))
+					{
+						Files.createDirectory(dirToCreate);
+					}
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		}
+	}
+
 	public String getChangeLog()
 	{
-		StringBuffer buffer = new StringBuffer();
+		final StringBuffer buffer = new StringBuffer();
 		try
 		{
-			URL url = new URL("https", "api.github.com", "/repos/"+this.name+"/"+this.project+"/releases");
-			String current_version = getVersion();
-			for (JsonValue value : Json.parse(new BufferedReader(new InputStreamReader(url.openStream(), Charset.forName("UTF-8")))).asArray())
+			final URL url = new URL("https", "api.github.com", "/repos/" + name + "/" + project + "/releases");
+			final String current_version = getVersion();
+			for (final JsonValue value : Json.parse(new BufferedReader(new InputStreamReader(url.openStream(), Charset.forName("UTF-8")))).asArray())
 			{
-				JsonObject release = value.asObject();
+				final JsonObject release = value.asObject();
 				if (release.getString("tag_name", "").equals(current_version))
 					break;
 				String body = release.getString("body", "");
-				Parser parser = Parser.builder().build();
-				Node node = parser.parse(body);
-				HtmlRenderer renderer = HtmlRenderer.builder().build();
-				body  = renderer.render(node);
+				final Parser parser = Parser.builder().build();
+				final Node node = parser.parse(body);
+				final HtmlRenderer renderer = HtmlRenderer.builder().build();
+				body = renderer.render(node);
 				buffer.append("<blockquote>").append("<h4><u>").append(release.getString("name", "")).append("</u></h4>").append(body).append("<br>").append("</blockquote>");
 			}
 		}
-		catch (IOException e)
+		catch (final IOException e)
 		{
 			e.printStackTrace();
 		}
@@ -78,8 +206,8 @@ public class JUpdater
 
 	public boolean updateAvailable()
 	{
-		String current_version = getVersion();
-		String new_version = result.getString("tag_name", "");
+		final String current_version = getVersion();
+		final String new_version = result.getString("tag_name", "");
 		if (current_version.isEmpty())
 			return false;
 		if (new_version.isEmpty())
@@ -94,16 +222,16 @@ public class JUpdater
 
 	public URL getZipURL()
 	{
-		for (JsonValue asset : result.get("assets").asArray())
+		for (final JsonValue asset : result.get("assets").asArray())
 		{
-			JsonObject object = asset.asObject();
+			final JsonObject object = asset.asObject();
 			if (object.getString("content_type", "").equals("application/x-zip-compressed"))
 			{
 				try
 				{
 					return new URL(object.getString("browser_download_url", null));
 				}
-				catch (MalformedURLException e)
+				catch (final MalformedURLException e)
 				{
 					return null;
 				}
@@ -118,44 +246,39 @@ public class JUpdater
 		{
 			private static final long serialVersionUID = 1L;
 			{
-				JLabel label = new JLabel();
-				Font font = label.getFont();
-				StringBuffer style = new StringBuffer();
+				final JLabel label = new JLabel();
+				final Font font = label.getFont();
+				final StringBuffer style = new StringBuffer();
 				style.append("font-family:" + font.getFamily() + ";");
 
-				this.setContentType("text/html");
-				this.setText(String.format("<html><body style=\"" + style + "\"><h1>New JRomManager %s is available <a href='%s' target='_blank'>HERE</a></h1><h2>CHANGELOG</h2>%s</body></html>", getUpdateName(), getZipURL().toExternalForm(), getChangeLog()));
-				this.addHyperlinkListener(new HyperlinkListener()
-				{
-					@Override
-					public void hyperlinkUpdate(HyperlinkEvent e)
+				setContentType("text/html");
+				setText(String.format("<html><body style=\"" + style + "\"><h1>New JRomManager %s is available <a href='%s' target='_blank'>HERE</a></h1><h2>CHANGELOG</h2>%s</body></html>", getUpdateName(), getZipURL().toExternalForm(), getChangeLog()));
+				addHyperlinkListener(e -> {
+					if (e.getEventType().equals(HyperlinkEvent.EventType.ACTIVATED))
 					{
-						if (e.getEventType().equals(HyperlinkEvent.EventType.ACTIVATED))
+						if (Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
 						{
-							if (Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+							try
 							{
-								try
-								{
-									Desktop.getDesktop().browse(e.getURL().toURI());
-								}
-								catch (IOException | URISyntaxException e1)
-								{
-									e1.printStackTrace();
-								}
+								Desktop.getDesktop().browse(e.getURL().toURI());
+							}
+							catch (IOException | URISyntaxException e1)
+							{
+								e1.printStackTrace();
 							}
 						}
 					}
 				});
-				this.setEditable(false);
-				this.setOpaque(false);
+				setEditable(false);
+				setOpaque(false);
 			}
 		})
 		{
 			private static final long serialVersionUID = 1L;
 			{
-				this.setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_ALWAYS);
-				this.setPreferredSize(new Dimension(getPreferredSize().width, 400));
-				this.setBorder(new EmptyBorder(0, 0, 0, 0));
+				setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+				setPreferredSize(new Dimension(getPreferredSize().width, 400));
+				setBorder(new EmptyBorder(0, 0, 0, 0));
 			}
 		});
 	}
