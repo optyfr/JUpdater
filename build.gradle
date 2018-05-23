@@ -1,0 +1,59 @@
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+def props = new Properties()
+file("dist/ver.properties").withInputStream { props.load(it) }
+
+version = props.getProperty("Specification-Version") + props.getProperty("Implementation-Version")
+
+repositories {
+	mavenCentral()
+}
+
+eclipse {
+	classpath {
+		downloadJavadoc = true
+		downloadSources = true
+	}
+}
+
+dependencies {
+	compile group: 'com.eclipsesource.minimal-json', name: 'minimal-json', version: '0.9.5'
+	compile group: 'com.atlassian.commonmark', name: 'commonmark', version: '0.11.0'
+}
+
+sourceSets {
+	main {
+		java {
+			srcDirs = ["src"]
+		}
+		resources {
+			srcDirs = ["src"]
+		}
+	}
+}
+
+jar {
+	from configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+	manifest {
+		attributes(
+			"Manifest-Version"     : "1.0",
+			"Specification-Title"  : "JUpdater",
+			"Specification-Version": props.getProperty("Specification-Version"),
+			"Implementation-Title" : "jrm",
+			"Implementation-Version" : props.getProperty("Implementation-Version"),
+			"Main-Class"           : "jupdater.JUpdater",
+		)
+		archiveName baseName + '.' + extension
+	}
+}
+
+apply plugin: 'distribution'
+
+distributions {
+    main {
+         contents {
+        	from (jar)
+        }
+    }
+}
