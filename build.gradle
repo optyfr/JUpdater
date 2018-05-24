@@ -48,12 +48,10 @@ jar {
 	}
 }
 
-apply plugin: 'distribution'
-
-distributions {
-    main {
-         contents {
-        	from (jar)
-        }
-    }
+task distZip(type: Zip, dependsOn: jar) {
+	from (jar)
+	archiveName baseName + '-' + version + '.' + extension
+	destinationDir = file("$buildDir/distributions/")
 }
+
+assemble.dependsOn distZip

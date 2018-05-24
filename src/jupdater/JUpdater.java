@@ -4,33 +4,17 @@ import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.HeadlessException;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLConnection;
 import java.nio.charset.Charset;
-import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.*;
 import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Properties;
 
-import javax.swing.JEditorPane;
-import javax.swing.JFileChooser;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JScrollPane;
-import javax.swing.ScrollPaneConstants;
+import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.HyperlinkEvent;
 
@@ -57,7 +41,7 @@ public class JUpdater
 				final Properties props = new Properties();
 				props.load(JUpdater.class.getClassLoader().getResourceAsStream("install.properties"));
 				final JUpdater updater = new JUpdater(props.getProperty("name"), props.getProperty("project"));
-				updater.install();
+				updater.install(props.getProperty("archive"));
 			}
 			catch (final IOException e)
 			{
@@ -71,9 +55,8 @@ public class JUpdater
 				final JUpdater updater = new JUpdater(args[0], args[1]);
 				updater.update();
 			}
-			catch (IOException e)
+			catch (IOException | URISyntaxException e)
 			{
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -94,27 +77,30 @@ public class JUpdater
 		}
 	}
 
-	public void update() throws IOException
+	public void update() throws IOException, URISyntaxException
 	{
 		final URL url = getZipURL();
 		if (url != null)
 		{
-			try(InputStream in = url.openStream())
+			final Path filename = Paths.get(url.getPath()).getFileName();
+			try (final InputStream in = new ProgressMonitorInputStream(null, "Downloading " + filename, url.openStream()))
 			{
-				final Path tempDir = Files.createTempDirectory("Install");
-				final Path tempFile = Files.createTempFile(tempDir, null, ".zip");
-				Files.copy(JUpdater.class.getClassLoader().getResourceAsStream("install.zip"), tempFile, StandardCopyOption.REPLACE_EXISTING);
-				unzip(tempFile, Paths.get("").toAbsolutePath());
-				launch(Paths.get("").toAbsolutePath());
+				final Path workdir = Paths.get("").toAbsolutePath();
+				final Path dir = Paths.get(workdir.toString(), "updates");
+				Files.createDirectory(dir);
+				final Path file = dir.resolve(filename);
+				Files.copy(in, file, StandardCopyOption.REPLACE_EXISTING);
+				unzip(file, workdir);
+				launch(workdir);
 			}
 		}
 	}
 
-	public void install() throws IOException
+	public void install(final String archive) throws IOException
 	{
 		final Path tempDir = Files.createTempDirectory("Install");
 		final Path tempFile = Files.createTempFile(tempDir, null, ".zip");
-		Files.copy(JUpdater.class.getClassLoader().getResourceAsStream("install.zip"), tempFile, StandardCopyOption.REPLACE_EXISTING);
+		Files.copy(JUpdater.class.getClassLoader().getResourceAsStream(archive), tempFile, StandardCopyOption.REPLACE_EXISTING);
 		new JFileChooser()
 		{
 			private static final long serialVersionUID = 1L;
@@ -125,17 +111,27 @@ public class JUpdater
 				if (showSaveDialog(null) == JFileChooser.APPROVE_OPTION)
 				{
 					unzip(tempFile, getSelectedFile().toPath());
+					tempFile.toFile().delete();
+					tempDir.toFile().delete();
 					launch(getSelectedFile().toPath());
 				}
 			}
 		};
 	}
 
-	public void launch(Path path) throws IOException
+	public void launch(final Path workdir) throws IOException
 	{
-		new ProcessBuilder("java","-jar",project+".jar","-Xmx1g").directory(path.toFile()).start();
+		final String home = System.getProperty("java.home");
+		final String os = System.getProperty("os.name");
+		final String arch = System.getProperty("os.arch");
+		final File java;
+		if (os.equalsIgnoreCase("Windows"))
+			java = new File(new File(home), "bin/javaw.exe");
+		else
+			java = new File(new File(home), "bin/java");
+		new ProcessBuilder(java.getAbsolutePath(), "-jar", project + ".jar", arch.equals("x86")?(os.startsWith("Windows")?"-Xmx1g":"-Xmx1500m"):"-Xmx2g").directory(workdir.toFile()).start();
 	}
-	
+
 	public void unzip(final Path zipFile, final Path destDir) throws IOException
 	{
 		if (Files.notExists(destDir))
@@ -206,6 +202,13 @@ public class JUpdater
 
 	public boolean updateAvailable()
 	{
+		try
+		{
+			Files.deleteIfExists(Paths.get("JUpdater.tmp.jar"));
+		}
+		catch (IOException e)
+		{
+		}
 		final String current_version = getVersion();
 		final String new_version = result.getString("tag_name", "");
 		if (current_version.isEmpty())
@@ -252,11 +255,32 @@ public class JUpdater
 				style.append("font-family:" + font.getFamily() + ";");
 
 				setContentType("text/html");
-				setText(String.format("<html><body style=\"" + style + "\"><h1>New JRomManager %s is available <a href='%s' target='_blank'>HERE</a></h1><h2>CHANGELOG</h2>%s</body></html>", getUpdateName(), getZipURL().toExternalForm(), getChangeLog()));
+				setText(String.format("<html><body style=\"" + style + "\"><h1>New JRomManager %s is available click <a href='javascript:update()' target='_blank'>HERE</a> to update</h1><h2>CHANGELOG</h2>%s</body></html>", getUpdateName(), getChangeLog()));
 				addHyperlinkListener(e -> {
 					if (e.getEventType().equals(HyperlinkEvent.EventType.ACTIVATED))
 					{
-						if (Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+						if ("javascript:update()".equals(e.getDescription()))
+						{
+							try
+							{
+								final String home = System.getProperty("java.home");
+								final String os = System.getProperty("os.name");
+								final File java;
+								if (os.equalsIgnoreCase("Windows"))
+									java = new File(new File(home), "bin/javaw.exe");
+								else
+									java = new File(new File(home), "bin/java");
+								final Path workdir = Paths.get("").toAbsolutePath();
+								Files.copy(workdir.resolve("JUpdater.jar"), workdir.resolve("JUpdater.tmp.jar"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+								new ProcessBuilder(java.getAbsolutePath(), "-jar", "JUpdater.tmp.jar", name, project).directory(workdir.toFile()).start();
+								System.exit(0);
+							}
+							catch (IOException e2)
+							{
+								e2.printStackTrace();
+							}
+						}
+						else if (Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
 						{
 							try
 							{
