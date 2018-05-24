@@ -12,7 +12,9 @@ import java.nio.charset.Charset;
 import java.nio.file.*;
 import java.nio.file.FileSystem;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -34,7 +36,7 @@ public class JUpdater
 
 	public static void main(final String[] args)
 	{
-		if (args.length == 0)
+		if(args.length == 0)
 		{
 			try
 			{
@@ -43,23 +45,25 @@ public class JUpdater
 				final JUpdater updater = new JUpdater(props.getProperty("name"), props.getProperty("project"));
 				updater.install(props.getProperty("archive"));
 			}
-			catch (final IOException e)
+			catch(final IOException e)
 			{
 				e.printStackTrace();
 			}
 		}
-		else if (args.length == 2)
+		else if(args.length == 2)
 		{
 			try
 			{
 				final JUpdater updater = new JUpdater(args[0], args[1]);
 				updater.update();
 			}
-			catch (IOException | URISyntaxException e)
+			catch(IOException | URISyntaxException e)
 			{
 				e.printStackTrace();
 			}
 		}
+		else
+			System.err.println("Bad arguments : " + Arrays.asList(args).stream().collect(Collectors.joining(", ")));
 	}
 
 	public JUpdater(final String name, final String project)
@@ -71,7 +75,7 @@ public class JUpdater
 			final URL url = new URL("https", "api.github.com", "/repos/" + this.name + "/" + this.project + "/releases/latest");
 			result = Json.parse(new BufferedReader(new InputStreamReader(url.openStream(), Charset.forName("UTF-8")))).asObject();
 		}
-		catch (HeadlessException | IOException e)
+		catch(HeadlessException | IOException e)
 		{
 			e.printStackTrace();
 		}
@@ -80,14 +84,15 @@ public class JUpdater
 	public void update() throws IOException, URISyntaxException
 	{
 		final URL url = getZipURL();
-		if (url != null)
+		if(url != null)
 		{
 			final Path filename = Paths.get(url.getPath()).getFileName();
 			try (final InputStream in = new ProgressMonitorInputStream(null, "Downloading " + filename, url.openStream()))
 			{
 				final Path workdir = Paths.get("").toAbsolutePath();
 				final Path dir = Paths.get(workdir.toString(), "updates");
-				Files.createDirectory(dir);
+				if(Files.notExists(dir))
+					Files.createDirectory(dir);
 				final Path file = dir.resolve(filename);
 				Files.copy(in, file, StandardCopyOption.REPLACE_EXISTING);
 				unzip(file, workdir);
@@ -108,7 +113,7 @@ public class JUpdater
 				setDialogType(JFileChooser.SAVE_DIALOG);
 				setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 				setDialogTitle("Choose directory to install");
-				if (showSaveDialog(null) == JFileChooser.APPROVE_OPTION)
+				if(showSaveDialog(null) == JFileChooser.APPROVE_OPTION)
 				{
 					unzip(tempFile, getSelectedFile().toPath());
 					tempFile.toFile().delete();
@@ -125,16 +130,17 @@ public class JUpdater
 		final String os = System.getProperty("os.name");
 		final String arch = System.getProperty("os.arch");
 		final File java;
-		if (os.toLowerCase().startsWith("windows"))
+		if(os.toLowerCase().startsWith("windows"))
 			java = new File(new File(home), "bin/javaw.exe");
 		else
 			java = new File(new File(home), "bin/java");
 		new ProcessBuilder(java.getAbsolutePath(), "-jar", project + ".jar", arch.equals("x86")?(os.startsWith("Windows")?"-Xmx1g":"-Xmx1500m"):"-Xmx2g").directory(workdir.toFile()).start();
+		System.exit(0);
 	}
 
 	public void unzip(final Path zipFile, final Path destDir) throws IOException
 	{
-		if (Files.notExists(destDir))
+		if(Files.notExists(destDir))
 		{
 			Files.createDirectories(destDir);
 		}
@@ -153,7 +159,7 @@ public class JUpdater
 					{
 						Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
 					}
-					catch (final DirectoryNotEmptyException ignore)
+					catch(final DirectoryNotEmptyException ignore)
 					{
 					}
 					return FileVisitResult.CONTINUE;
@@ -163,7 +169,7 @@ public class JUpdater
 				public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) throws IOException
 				{
 					final Path dirToCreate = Paths.get(destDir.toString(), dir.toString());
-					if (Files.notExists(dirToCreate))
+					if(Files.notExists(dirToCreate))
 					{
 						Files.createDirectory(dirToCreate);
 					}
@@ -180,10 +186,10 @@ public class JUpdater
 		{
 			final URL url = new URL("https", "api.github.com", "/repos/" + name + "/" + project + "/releases");
 			final String current_version = getVersion();
-			for (final JsonValue value : Json.parse(new BufferedReader(new InputStreamReader(url.openStream(), Charset.forName("UTF-8")))).asArray())
+			for(final JsonValue value : Json.parse(new BufferedReader(new InputStreamReader(url.openStream(), Charset.forName("UTF-8")))).asArray())
 			{
 				final JsonObject release = value.asObject();
-				if (release.getString("tag_name", "").equals(current_version))
+				if(release.getString("tag_name", "").equals(current_version))
 					break;
 				String body = release.getString("body", "");
 				final Parser parser = Parser.builder().build();
@@ -193,7 +199,7 @@ public class JUpdater
 				buffer.append("<blockquote>").append("<h4><u>").append(release.getString("name", "")).append("</u></h4>").append(body).append("<br>").append("</blockquote>");
 			}
 		}
-		catch (final IOException e)
+		catch(final IOException e)
 		{
 			e.printStackTrace();
 		}
@@ -206,14 +212,14 @@ public class JUpdater
 		{
 			Files.deleteIfExists(Paths.get("JUpdater.tmp.jar"));
 		}
-		catch (IOException e)
+		catch(IOException e)
 		{
 		}
 		final String current_version = getVersion();
 		final String new_version = result.getString("tag_name", "");
-		if (current_version.isEmpty())
+		if(current_version.isEmpty())
 			return false;
-		if (new_version.isEmpty())
+		if(new_version.isEmpty())
 			return false;
 		return !current_version.equals(new_version);
 	}
@@ -225,16 +231,16 @@ public class JUpdater
 
 	public URL getZipURL()
 	{
-		for (final JsonValue asset : result.get("assets").asArray())
+		for(final JsonValue asset : result.get("assets").asArray())
 		{
 			final JsonObject object = asset.asObject();
-			if (object.getString("content_type", "").equals("application/x-zip-compressed"))
+			if(object.getString("content_type", "").equals("application/x-zip-compressed"))
 			{
 				try
 				{
 					return new URL(object.getString("browser_download_url", null));
 				}
-				catch (final MalformedURLException e)
+				catch(final MalformedURLException e)
 				{
 					return null;
 				}
@@ -255,38 +261,42 @@ public class JUpdater
 				style.append("font-family:" + font.getFamily() + ";");
 
 				setContentType("text/html");
-				setText(String.format("<html><body style=\"" + style + "\"><h1>New JRomManager %s is available click <a href='javascript:update()' target='_blank'>HERE</a> to update</h1><h2>CHANGELOG</h2>%s</body></html>", getUpdateName(), getChangeLog()));
+				setText(String.format(
+						"<html><body style=\"" + style
+								+ "\"><h1>New JRomManager %s is available click <a href='javascript:update()' target='_blank'>HERE</a> to update</h1><h2>CHANGELOG</h2>%s</body></html>",
+						getUpdateName(), getChangeLog()));
 				addHyperlinkListener(e -> {
-					if (e.getEventType().equals(HyperlinkEvent.EventType.ACTIVATED))
+					if(e.getEventType().equals(HyperlinkEvent.EventType.ACTIVATED))
 					{
-						if ("javascript:update()".equals(e.getDescription()))
+						if("javascript:update()".equals(e.getDescription()))
 						{
 							try
 							{
 								final String home = System.getProperty("java.home");
 								final String os = System.getProperty("os.name");
 								final File java;
-								if (os.toLowerCase().startsWith("windows"))
+								if(os.toLowerCase().startsWith("windows"))
 									java = new File(new File(home), "bin/javaw.exe");
 								else
 									java = new File(new File(home), "bin/java");
 								final Path workdir = Paths.get("").toAbsolutePath();
 								Files.copy(workdir.resolve("JUpdater.jar"), workdir.resolve("JUpdater.tmp.jar"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
-								new ProcessBuilder(java.getAbsolutePath(), "-jar", "JUpdater.tmp.jar", name, project).directory(workdir.toFile()).start();
+								String[] args = {java.getAbsolutePath(), "-jar", "JUpdater.tmp.jar", name, project};
+								new ProcessBuilder(args).directory(workdir.toFile()).start();
 								System.exit(0);
 							}
-							catch (IOException e2)
+							catch(IOException e2)
 							{
 								e2.printStackTrace();
 							}
 						}
-						else if (Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+						else if(Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
 						{
 							try
 							{
 								Desktop.getDesktop().browse(e.getURL().toURI());
 							}
-							catch (IOException | URISyntaxException e1)
+							catch(IOException | URISyntaxException e1)
 							{
 								e1.printStackTrace();
 							}
@@ -311,9 +321,9 @@ public class JUpdater
 	{
 		String version = ""; //$NON-NLS-1$
 		final Package pkg = this.getClass().getPackage();
-		if (pkg.getSpecificationVersion() != null)
+		if(pkg.getSpecificationVersion() != null)
 			version += pkg.getSpecificationVersion(); // $NON-NLS-1$
-		if (pkg.getImplementationVersion() != null)
+		if(pkg.getImplementationVersion() != null)
 			version += pkg.getImplementationVersion(); // $NON-NLS-1$
 		return version;
 	}
