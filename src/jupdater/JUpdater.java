@@ -103,9 +103,6 @@ public class JUpdater
 
 	public void install(final String archive) throws IOException
 	{
-		final Path tempDir = Files.createTempDirectory("Install");
-		final Path tempFile = Files.createTempFile(tempDir, null, ".zip");
-		Files.copy(JUpdater.class.getClassLoader().getResourceAsStream(archive), tempFile, StandardCopyOption.REPLACE_EXISTING);
 		new JFileChooser()
 		{
 			private static final long serialVersionUID = 1L;
@@ -115,6 +112,9 @@ public class JUpdater
 				setDialogTitle("Choose directory to install");
 				if(showSaveDialog(null) == JFileChooser.APPROVE_OPTION)
 				{
+					final Path tempDir = Files.createTempDirectory("Install");
+					final Path tempFile = tempDir.resolve(archive);
+					Files.copy(JUpdater.class.getClassLoader().getResourceAsStream(archive), tempFile, StandardCopyOption.REPLACE_EXISTING);
 					unzip(tempFile, getSelectedFile().toPath());
 					tempFile.toFile().delete();
 					tempDir.toFile().delete();
