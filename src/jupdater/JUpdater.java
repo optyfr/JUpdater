@@ -125,7 +125,7 @@ public class JUpdater
 		final String os = System.getProperty("os.name");
 		final String arch = System.getProperty("os.arch");
 		final File java;
-		if (os.equalsIgnoreCase("Windows"))
+		if (os.toLowerCase().startsWith("windows"))
 			java = new File(new File(home), "bin/javaw.exe");
 		else
 			java = new File(new File(home), "bin/java");
@@ -266,7 +266,7 @@ public class JUpdater
 								final String home = System.getProperty("java.home");
 								final String os = System.getProperty("os.name");
 								final File java;
-								if (os.equalsIgnoreCase("Windows"))
+								if (os.toLowerCase().startsWith("windows"))
 									java = new File(new File(home), "bin/javaw.exe");
 								else
 									java = new File(new File(home), "bin/java");
