@@ -157,7 +157,7 @@ public class JUpdater
 					final Path destFile = Paths.get(destDir.toString(), file.toString());
 					try
 					{
-						Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+						Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
 					}
 					catch(final DirectoryNotEmptyException ignore)
 					{
