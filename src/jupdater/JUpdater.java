@@ -208,6 +208,8 @@ public class JUpdater
 
 	public boolean updateAvailable()
 	{
+		if(result==null)
+			return false;
 		try
 		{
 			Files.deleteIfExists(Paths.get("JUpdater.tmp.jar"));
