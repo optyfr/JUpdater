@@ -326,7 +326,12 @@ public class JUpdater
 		if(pkg.getSpecificationVersion() != null)
 			version += pkg.getSpecificationVersion(); // $NON-NLS-1$
 		if(pkg.getImplementationVersion() != null)
-			version += pkg.getImplementationVersion(); // $NON-NLS-1$
+		{
+			String patch = pkg.getImplementationVersion(); // $NON-NLS-1$
+			if(patch.charAt(0)!='b')
+				version+='.';
+			version+=patch;
+		}
 		return version;
 	}
 
