@@ -1,3 +1,8 @@
+plugins {
+	id 'java' 
+	id "org.beryx.jlink" version "2.21.2"
+	id "org.javamodularity.moduleplugin" version "1.7.0"
+}
 apply plugin: 'java'
 sourceCompatibility = 11
 targetCompatibility = 11
@@ -19,9 +24,25 @@ eclipse {
 	}
 }
 
+java {
+	modularity.inferModulePath.set(true)
+}
+
+ext.moduleName = 'minimal.json'
+
+compileJava {
+	inputs.property('moduleName', moduleName)
+	doFirst {
+		options.compilerArgs = [
+			'--module-path', classpath.asPath,
+		]
+		classpath = files()
+	}
+}
+
 dependencies {
-	compile group: 'com.eclipsesource.minimal-json', name: 'minimal-json', version: '0.9.5'
-	compile group: 'com.atlassian.commonmark', name: 'commonmark', version: '0.12.+'
+	implementation group: 'com.eclipsesource.minimal-json', name: 'minimal-json', version: '0.9.5'
+	implementation group: 'com.atlassian.commonmark', name: 'commonmark', version: '0.12.+'
 }
 
 sourceSets {
@@ -50,10 +71,10 @@ jar {
 	}
 }
 
-task distZip(type: Zip, dependsOn: jar) {
+task distZip2(type: Zip, dependsOn: jar) {
 	from (jar)
 	archiveName baseName + '-' + version + '.' + extension
 	destinationDir = file("$buildDir/distributions/")
 }
 
-assemble.dependsOn distZip
+assemble.dependsOn distZip2
