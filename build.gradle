@@ -57,7 +57,7 @@ sourceSets {
 }
 
 jar {
-	from configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+	from configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }
 	manifest {
 		attributes(
 			"Manifest-Version"     : "1.0",
@@ -67,14 +67,13 @@ jar {
 			"Implementation-Version" : props.getProperty("Implementation-Version"),
 			"Main-Class"           : "jupdater.JUpdater",
 		)
-		archiveName baseName + '.' + extension
 	}
 }
 
 task distZip2(type: Zip, dependsOn: jar) {
 	from (jar)
-	archiveName baseName + '-' + version + '.' + extension
-	destinationDir = file("$buildDir/distributions/")
+	archiveFileName = project.archivesBaseName + '-' + project.version + '.zip'
+	destinationDirectory = file("$buildDir/distributions/")
 }
 
 assemble.dependsOn distZip2
