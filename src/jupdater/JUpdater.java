@@ -145,7 +145,7 @@ public class JUpdater
 			Files.createDirectories(destDir);
 		}
 
-		try (FileSystem zipFileSystem = FileSystems.newFileSystem(zipFile, null))
+		try (FileSystem zipFileSystem = FileSystems.newFileSystem(zipFile, (ClassLoader)null))
 		{
 			final Path root = zipFileSystem.getRootDirectories().iterator().next();
 
